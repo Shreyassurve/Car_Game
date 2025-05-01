@@ -1,8 +1,7 @@
-// === Variables ===
-let scene, camera, renderer, car, score = 0;
+// === CAR GAME WITH MOBILE CONTROLS AND HIGH SCORE ===
+let scene, camera, renderer, car, score = 0, highScore = 0;
 let trees = [], houses = [], roadSegments = [], grassSegments = [], obstacles = [], coins = [];
-const segmentLength = 100, numSegments = 2;
-let highScore = localStorage.getItem("highScore") || 0;
+const segmentLength = 100, numSegments = 3;
 
 let themeSettings = {
   day: { background: 0x87ceeb, fog: [10, 60], sunColor: 0xffff00, grass: 0x228b22, road: 0x333333 },
@@ -14,7 +13,6 @@ let themeSettings = {
 let currentTheme = "day";
 let isGameRunning = false;
 
-// === Start Game ===
 document.getElementById("start-button").onclick = () => {
   currentTheme = document.getElementById("theme-selector").value;
   document.getElementById("start-screen").style.display = "none";
@@ -25,7 +23,6 @@ document.getElementById("start-button").onclick = () => {
 
 document.getElementById("reset-button").onclick = () => location.reload();
 
-// === Init Function ===
 function init() {
   scene = new THREE.Scene();
   const theme = themeSettings[currentTheme];
@@ -37,7 +34,8 @@ function init() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.getElementById("game-container").appendChild(renderer.domElement);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+  const light = new THREE.AmbientLight(0xffffff, 0.8);
+  scene.add(light);
 
   const sun = new THREE.Mesh(new THREE.SphereGeometry(3, 32, 32), new THREE.MeshBasicMaterial({ color: theme.sunColor }));
   sun.position.set(-20, 20, -40);
@@ -52,6 +50,9 @@ function init() {
   createGround(theme);
   createScenery(theme);
   isGameRunning = true;
+
+  highScore = parseInt(localStorage.getItem("highScore")) || 0;
+  document.getElementById("high-score").textContent = `High Score: ${highScore}`;
 }
 
 function createCar(color = 0xff0000) {
@@ -145,30 +146,33 @@ function createObstacle(z) {
 function createCoin(z) {
   const coin = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.1, 8, 16), new THREE.MeshBasicMaterial({ color: 0xffd700 }));
   coin.rotation.x = Math.PI / 2;
-  coin.position.set(Math.random() < 0.5 ? -2 : 2, 0.3, z);
+  coin.position.set((Math.random() < 0.5 ? -2 : 2), 0.3, z);
   coin.userData.bounceHeight = Math.random() * 0.5 + 0.1;
   coin.userData.bounceSpeed = Math.random() * 0.05 + 0.02;
   scene.add(coin);
   coins.push(coin);
 }
 
-// === Controls ===
 const keys = {};
 window.addEventListener("keydown", e => keys[e.key] = true);
 window.addEventListener("keyup", e => keys[e.key] = false);
 
-let startX = null;
-window.addEventListener("touchstart", e => startX = e.touches[0].clientX);
-window.addEventListener("touchmove", e => {
-  if (startX === null) return;
-  const dx = e.touches[0].clientX - startX;
-  if (dx > 30 && car.position.x < 4) car.position.x += 0.5;
-  else if (dx < -30 && car.position.x > -4) car.position.x -= 0.5;
-  startX = null;
+// Mobile gesture controls
+let touchStartX = 0;
+let touchEndX = 0;
+function handleGesture() {
+  const diffX = touchEndX - touchStartX;
+  if (Math.abs(diffX) > 30) {
+    if (diffX < 0 && car.position.x > -4) car.position.x -= 1.5;
+    else if (diffX > 0 && car.position.x < 4) car.position.x += 1.5;
+  }
+}
+window.addEventListener("touchstart", e => touchStartX = e.changedTouches[0].screenX);
+window.addEventListener("touchend", e => {
+  touchEndX = e.changedTouches[0].screenX;
+  handleGesture();
 });
-window.addEventListener("touchend", () => startX = null);
 
-// === Game Loop ===
 function animate() {
   if (!isGameRunning) return;
   requestAnimationFrame(animate);
@@ -181,20 +185,20 @@ function animate() {
   camera.lookAt(car.position);
 
   score += 1;
-  document.getElementById("score").textContent = `Score: ${Math.floor(score / 10)} | High Score: ${Math.floor(highScore / 10)}`;
+  document.getElementById("score").textContent = `Score: ${Math.floor(score / 10)}`;
 
-  for (let obs of obstacles) {
+  obstacles.forEach(obs => {
     obs.position.z += obs.userData.speed;
     if (car.position.distanceTo(obs.position) < 1.5) return endGame();
-  }
+  });
 
-  for (let coin of coins) {
+  coins.forEach(coin => {
     if (car.position.distanceTo(coin.position) < 1) {
       coin.visible = false;
       score += 100;
     }
     coin.position.y = Math.sin(coin.userData.bounceSpeed * Date.now()) * coin.userData.bounceHeight + 0.3;
-  }
+  });
 
   recycleSegments(roadSegments, segmentLength);
   recycleSegments(grassSegments, segmentLength);
@@ -250,11 +254,13 @@ function recycleTreeHouse(array, spacing) {
 
 function endGame() {
   isGameRunning = false;
-  if (score > highScore) {
-    highScore = score;
+  const finalScore = Math.floor(score / 10);
+  if (finalScore > highScore) {
+    highScore = finalScore;
     localStorage.setItem("highScore", highScore);
   }
-  alert("Game Over!\nYour Score: " + Math.floor(score / 10) + "\nHigh Score: " + Math.floor(highScore / 10));
+  alert("Game Over! Your Score: " + finalScore);
+  document.getElementById("high-score").textContent = `High Score: ${highScore}`;
   document.getElementById("hud").style.display = "none";
   document.getElementById("start-screen").style.display = "block";
 }
