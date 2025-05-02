@@ -2,11 +2,14 @@ let scene, camera, renderer, car, score = 0;
 let trees = [], houses = [], roadSegments = [], grassSegments = [], obstacles = [], coins = [];
 const segmentLength = 100, numSegments = 2;
 
+let clouds = [];
+let skyObject = null;
+
 let themeSettings = {
-  day: { background: 0x87ceeb, fog: [10, 60], sunColor: 0xffff00, grass: 0x228b22, road: 0x333333 },
-  night: { background: 0x000033, fog: [5, 30], sunColor: 0xffffff, grass: 0x003300, road: 0x111111 },
-  desert: { background: 0xffe4b5, fog: [10, 60], sunColor: 0xffd700, grass: 0xc2b280, road: 0x996633 },
-  snow: { background: 0xe0f7fa, fog: [10, 60], sunColor: 0xffffff, grass: 0xffffff, road: 0xcccccc },
+  day: { background: 0x87ceeb, fog: [10, 60], sunColor: 0xffff00, grass: 0x228b22, road: 0x333333, cloudColor: 0xffffff },
+  night: { background: 0x000033, fog: [5, 30], sunColor: 0xffffff, grass: 0x003300, road: 0x111111, cloudColor: 0x555577 },
+  desert: { background: 0xffe4b5, fog: [10, 60], sunColor: 0xffd700, grass: 0xc2b280, road: 0x996633, cloudColor: 0xfff2cc },
+  snow: { background: 0xe0f7fa, fog: [10, 60], sunColor: 0xffffff, grass: 0xffffff, road: 0xcccccc, cloudColor: 0xffffff },
 };
 
 let currentTheme = "day";
@@ -36,10 +39,14 @@ function init() {
   const light = new THREE.AmbientLight(0xffffff, 0.8);
   scene.add(light);
 
-  const sun = new THREE.Mesh(new THREE.SphereGeometry(3, 32, 32),
-    new THREE.MeshBasicMaterial({ color: theme.sunColor }));
-  sun.position.set(-20, 20, -40);
-  scene.add(sun);
+  // Sky object (sun or moon)
+  const skyMaterial = new THREE.MeshBasicMaterial({
+    color: currentTheme === "night" ? 0xddddff : theme.sunColor,
+    emissive: currentTheme === "night" ? 0xaaaaee : 0x000000
+  });
+  skyObject = new THREE.Mesh(new THREE.SphereGeometry(2, 16, 16), skyMaterial);
+  skyObject.position.set(-20, 20, -40);
+  scene.add(skyObject);
 
   car = createCar();
   scene.add(car);
@@ -47,6 +54,7 @@ function init() {
   camera.position.set(0, 5, 10);
   camera.lookAt(car.position);
 
+  createClouds(theme.cloudColor);
   createGround(theme);
   createScenery(theme);
   isGameRunning = true;
@@ -108,6 +116,35 @@ function createScenery(theme) {
   }
 }
 
+function createClouds(cloudColor) {
+  const cloudMaterial = new THREE.MeshBasicMaterial({ color: cloudColor });
+  for (let i = 0; i < 10; i++) {
+    const cloud = new THREE.Group();
+    const puffCount = 3 + Math.floor(Math.random() * 3);
+
+    for (let j = 0; j < puffCount; j++) {
+      const puff = new THREE.Mesh(
+        new THREE.SphereGeometry(Math.random() * 1 + 0.5, 12, 12),
+        cloudMaterial
+      );
+      puff.position.set(
+        Math.random() * 3 - 1.5,
+        Math.random() * 1 - 0.5,
+        Math.random() * 1 - 0.5
+      );
+      cloud.add(puff);
+    }
+
+    cloud.position.set(
+      Math.random() * 60 - 30,
+      10 + Math.random() * 5,
+      -Math.random() * 200
+    );
+    scene.add(cloud);
+    clouds.push(cloud);
+  }
+}
+
 function createTree(x, z) {
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1),
     new THREE.MeshBasicMaterial({ color: 0x8b4513 }));
@@ -145,10 +182,10 @@ function createObstacle(z) {
 function createCoin(z) {
   const coin = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.1, 8, 16),
     new THREE.MeshBasicMaterial({ color: 0xffd700 }));
-  coin.rotation.x = Math.PI / 2; // Make coin vertical (rotate around x-axis)
+  coin.rotation.x = Math.PI / 2;
   coin.position.set((Math.random() < 0.5 ? -2 : 2), 0.3, z);
-  coin.userData.bounceHeight = Math.random() * 0.5 + 0.1; // Random bounce height
-  coin.userData.bounceSpeed = Math.random() * 0.05 + 0.02; // Random bounce speed
+  coin.userData.bounceHeight = Math.random() * 0.5 + 0.1;
+  coin.userData.bounceSpeed = Math.random() * 0.05 + 0.02;
   scene.add(coin);
   coins.push(coin);
 }
@@ -171,30 +208,37 @@ function animate() {
   score += 1;
   document.getElementById("score").textContent = `Score: ${Math.floor(score / 10)}`;
 
-  // Collision with obstacles
+  // Obstacle collision
   for (let obs of obstacles) {
     obs.position.z += obs.userData.speed;
     if (car.position.distanceTo(obs.position) < 1.5) return endGame();
   }
 
-  // Coin collection and bouncing
+  // Coin logic
   for (let coin of coins) {
-    if (car.position.distanceTo(coin.position) < 1) {
+    if (car.position.distanceTo(coin.position) < 1 && coin.visible) {
       coin.visible = false;
-      score += 100; // Add score for collecting coin
+      score += 100;
     }
-
-    // Bouncing logic for coins
-    coin.position.y = Math.sin(coin.userData.bounceSpeed * Date.now()) * coin.userData.bounceHeight + 0.3;
+    if (coin.visible) {
+      coin.position.y = Math.sin(coin.userData.bounceSpeed * Date.now()) * coin.userData.bounceHeight + 0.3;
+    }
   }
 
-  // Recycling
   recycleSegments(roadSegments, segmentLength);
   recycleObstacles();
   recycleCoins();
   recycleTreeHouse(trees, 20);
   recycleTreeHouse(houses, 40);
   recycleGrass(grassSegments, segmentLength);
+
+  clouds.forEach(cloud => {
+    cloud.position.z += 0.02;
+    if (cloud.position.z > car.position.z + 50) {
+      cloud.position.z = car.position.z - 200;
+      cloud.position.x = Math.random() * 60 - 30;
+    }
+  });
 
   renderer.render(scene, camera);
 }
@@ -255,30 +299,20 @@ function endGame() {
   document.getElementById("hud").style.display = "none";
   document.getElementById("start-screen").style.display = "block";
 }
-let touchStartX = null;
-let touchEndX = null;
-window.addEventListener("touchstart", function (e) {
-  touchStartX = e.changedTouches[0].screenX;
-}, false);
 
-window.addEventListener("touchend", function (e) {
+// Mobile swipe
+let touchStartX = null, touchEndX = null;
+window.addEventListener("touchstart", e => touchStartX = e.changedTouches[0].screenX, false);
+window.addEventListener("touchend", e => {
   touchEndX = e.changedTouches[0].screenX;
   handleSwipe();
 }, false);
 
 function handleSwipe() {
   if (!touchStartX || !touchEndX) return;
-
   const dx = touchEndX - touchStartX;
-  const swipeThreshold = 30; // Minimum distance to count as a swipe
-
-  if (dx > swipeThreshold && car.position.x < 4) {
-    car.position.x += 1; // Swipe right
-  } else if (dx < -swipeThreshold && car.position.x > -4) {
-    car.position.x -= 1; // Swipe left
-  }
-
-  // Reset for next swipe
-  touchStartX = null;
-  touchEndX = null;
+  const swipeThreshold = 30;
+  if (dx > swipeThreshold && car.position.x < 4) car.position.x += 1;
+  else if (dx < -swipeThreshold && car.position.x > -4) car.position.x -= 1;
+  touchStartX = null; touchEndX = null;
 }
