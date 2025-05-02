@@ -255,3 +255,30 @@ function endGame() {
   document.getElementById("hud").style.display = "none";
   document.getElementById("start-screen").style.display = "block";
 }
+let touchStartX = null;
+let touchEndX = null;
+window.addEventListener("touchstart", function (e) {
+  touchStartX = e.changedTouches[0].screenX;
+}, false);
+
+window.addEventListener("touchend", function (e) {
+  touchEndX = e.changedTouches[0].screenX;
+  handleSwipe();
+}, false);
+
+function handleSwipe() {
+  if (!touchStartX || !touchEndX) return;
+
+  const dx = touchEndX - touchStartX;
+  const swipeThreshold = 30; // Minimum distance to count as a swipe
+
+  if (dx > swipeThreshold && car.position.x < 4) {
+    car.position.x += 1; // Swipe right
+  } else if (dx < -swipeThreshold && car.position.x > -4) {
+    car.position.x -= 1; // Swipe left
+  }
+
+  // Reset for next swipe
+  touchStartX = null;
+  touchEndX = null;
+}
